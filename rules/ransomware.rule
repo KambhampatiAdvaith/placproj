@@ -1,0 +1,14 @@
+[MALWARE]
+Name=LockBit
+Description=Detects ransomware activity
+Severity=Critical
+Version=2.1
+
+[RULES]
+ALL
+STRING:encrypt
+STRING:AES
+STRING:ransom
+
+[END]
+

@@ -1,0 +1,13 @@
+[MALWARE]
+Name=Trojan.Generic
+Description=Detects generic trojan malware
+Severity=High
+Version=1.0
+
+[RULES]
+ANY
+STRING:cmd.exe
+STRING:powershell
+REGEX:CreateProcess[A-Za-z]*
+
+[END]
