@@ -1,104 +1,180 @@
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
+#include <dirent.h>
+#include <sys/stat.h>
 
-int contains(const unsigned char *data, size_t size, const char *pat)
+#define MAX 256
+
+
+unsigned char *fileData;
+long fileSize;
+
+
+/* Search pattern inside any file */
+int contains(char *pattern)
 {
-    size_t len = strlen(pat);
+    int len = strlen(pattern);
 
-    if (len == 0 || len > size)
-        return 0;
-
-    for (size_t i = 0; i <= size - len; i++) {
-        if (memcmp(data + i, pat, len) == 0)
+    for(long i=0;i<=fileSize-len;i++)
+    {
+        if(memcmp(fileData+i,pattern,len)==0)
             return 1;
     }
 
     return 0;
 }
 
-int main(int argc, char *argv[])
+
+/* Read target file */
+int loadFile(char *name)
 {
-    if (argc != 3) {
-        fprintf(stderr, "Usage: %s <file> <rulefile>\n", argv[0]);
-        return 1;
-    }
+    FILE *fp=fopen(name,"rb");
 
-    FILE *fp = fopen(argv[1], "rb");
-    if (!fp) {
-        fprintf(stderr, "Cannot open file: %s\n", argv[1]);
-        return 1;
-    }
+    if(!fp)
+        return 0;
 
-    if (fseek(fp, 0, SEEK_END) != 0) {
-        fprintf(stderr, "Failed to seek file.\n");
-        fclose(fp);
-        return 1;
-    }
 
-    long fileSize = ftell(fp);
-    if (fileSize < 0) {
-        fprintf(stderr, "Failed to determine file size.\n");
-        fclose(fp);
-        return 1;
-    }
-
+    fseek(fp,0,SEEK_END);
+    fileSize=ftell(fp);
     rewind(fp);
 
-    if (fileSize == 0) {
-        fprintf(stderr, "Target file is empty.\n");
-        fclose(fp);
-        return 1;
-    }
 
-    size_t size = (size_t)fileSize;
+    fileData=(unsigned char*)malloc(fileSize);
 
-    unsigned char *buf = malloc(size);
-    if (buf == NULL) {
-        fprintf(stderr, "Memory allocation failed.\n");
-        fclose(fp);
-        return 1;
-    }
 
-    size_t bytesRead = fread(buf, 1, size, fp);
+    fread(fileData,1,fileSize,fp);
+
     fclose(fp);
 
-    if (bytesRead != size) {
-        fprintf(stderr, "Failed to read entire file.\n");
-        free(buf);
-        return 1;
+    return 1;
+}
+
+
+
+/* Scan one rule file */
+void scanRuleFile(char *filename)
+{
+    FILE *fp=fopen(filename,"r");
+
+    if(!fp)
+        return;
+
+
+    char line[MAX];
+
+    char malware[100]="Unknown";
+
+
+    while(fgets(line,sizeof(line),fp))
+    {
+
+        line[strcspn(line,"\n")]=0;
+
+
+        if(strncmp(line,"Name=",5)==0)
+        {
+            strcpy(malware,line+5);
+        }
+
+
+        if(strncmp(line,"STRING:",7)==0)
+        {
+            char *sig=line+7;
+
+
+            if(contains(sig))
+            {
+                printf("\nMalware Detected : %s\n",malware);
+            }
+        }
+
     }
 
-    FILE *rf = fopen(argv[2], "r");
-    if (!rf) {
-        fprintf(stderr, "Cannot open rule file: %s\n", argv[2]);
-        free(buf);
-        return 1;
-    }
 
-    char rule[256];
-    int found = 0;
+    fclose(fp);
+}
 
-    while (fgets(rule, sizeof(rule), rf)) {
 
-        rule[strcspn(rule, "\r\n")] = '\0';
 
-        
-        if (rule[0] == '\0')
+/* Recursive folder scan */
+void scanDirectory(char *path)
+{
+
+    DIR *dir=opendir(path);
+
+    if(!dir)
+        return;
+
+
+    struct dirent *entry;
+
+
+    while((entry=readdir(dir))!=NULL)
+    {
+
+        if(strcmp(entry->d_name,".")==0 ||
+           strcmp(entry->d_name,"..")==0)
             continue;
 
-        if (contains(buf, size, rule)) {
-            printf("Malware Detected: %s\n", rule);
-            found = 1;
-            break;
+
+        char full[500];
+
+        sprintf(full,"%s/%s",path,entry->d_name);
+
+
+
+        struct stat st;
+
+        stat(full,&st);
+
+
+        if(S_ISDIR(st.st_mode))
+        {
+            scanDirectory(full);
         }
+        else
+        {
+            scanRuleFile(full);
+        }
+
     }
 
-    if (!found)
-        printf("File is Safe\n");
 
-    fclose(rf);
-    free(buf);
+    closedir(dir);
+}
+
+
+
+
+int main(int argc,char *argv[])
+{
+
+    if(argc!=3)
+    {
+        printf("Usage: scanner <file> <rules_folder>\n");
+        return 1;
+    }
+
+
+    if(!loadFile(argv[1]))
+    {
+        printf("Cannot open file\n");
+        return 1;
+    }
+
+
+    printf("Scanning %s...\n",argv[1]);
+
+
+    scanDirectory(argv[2]);
+
+
+    free(fileData);
+
+
+    printf("\nScan Completed\n");
+
 
     return 0;
 }
